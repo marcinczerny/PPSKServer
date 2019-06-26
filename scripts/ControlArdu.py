@@ -7,53 +7,62 @@ import constants
 import os
 import time
 from std_msgs.msg import String, Int16, Float32, Int16MultiArray
-from ppsk.msg import Control
+#from ppsk.msg import Control
 class order:
     def __init__(self):
-        self.order = 0
-        self.OrderProperties=0
+        self.order = []
+        self.OrderProperties=[]
         self.SerialMessage = b""
-        self.Change = False
+        self.Change = 0
     
     def ChangeOrder(self,newOrder):
-        self.order = newOrder
-        self.Change = True
+        self.order.append(newOrder)
+        self.Change += 1 
 
     def ChangeOrderProperties(self,newProperties):
         self.OrderProperties = newProperties
-        self.Change = True
+        self.Change += 1
     
     def ChangeOrderAndProperties(self,newOrder,newProperties):
-        self.OrderProperties = newProperties
-        self.order = newOrder
-        self.Change = True
+        self.OrderProperties.append(newProperties)
+        self.order.append(newProperties) = newOrder
+        self.Change += 1
 
     def ReadOrder(self):
-        self.Change = False
-        return (self.order,self.OrderProperties)
+        self.Change -= 1
+        return (self.order[0],self.OrderProperties[0])
 
     def CheckChange(self):
-        return self.Change
+        return self.Change 
 
     def ReadSerialMessage(self):
         return self.SerialMessage
 
+    def DecideIfItIsARequest(self):
+        if self.order[0] == (constants.CONST_READ_STATE or constants.CONST_READ_DISTANCE_FRONT or constants.CONST_READ_DISTANCE_REAR or constants.CONST_DIRECTION or constants.CONST_READ_FLOOR or constants.CONST_READ_LIMIT_SWITCHES):
+            pass
+
     def GenerateSerialMessage(self):
-        self.Change = False
-        if self.order == constants.CONST_SERIAL_RPI_START:
+        self.Change -= 1 
+        if self.order.pop() == constants.CONST_START:
+            rospy.loginfo("Generuje start")
             self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_START]) 
+            self.OrderProperties.pop()
             return True
-        elif self.order == constants.CONST_SERIAL_RPI_DIRECTION:
-            self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_DIRECTION, self.OrderProperties])
+        elif self.order.pop() == constants.CONST_DIRECTION:
+            self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_DIRECTION, self.OrderProperties.pop()])
             return True
-        elif self.order == constants.CONST_SERIAL_RPI_SPEED:
-            self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_SPEED, self.OrderProperties])
+        elif self.order.pop() == constants.CONST_SPEED:
+            self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_SPEED, self.OrderProperties.pop()])
             return True
-        elif self.order == constants.CONST_SERIAL_RPI_INITIALIZED:
-            self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_START])
+        elif self.order.pop() == constants.CONST_INITIALIZE:
+            self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_INITIALIZED])
+            self.OrderProperties.pop()
             return True
-        elif self.order == constants.CONST_SERIAL_RPI_STOP:
+        elif self.order.pop() == constants.CONST_STOP:
+            rospy.loginfo("Generuje stop")
             self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_STOP])
+            self.OrderProperties.pop()
             return True
         else:
             return False     
@@ -90,9 +99,12 @@ def receiveOrders(data):
     global ser
     global orderObject
 
-    orderObject.ChangeOrderAndProperties(data.Order,data.OrderProperty)
-    rospy.loginfo(data.Order)
-    rospy.loginfo(data.OrderProperty)
+    recieved = data.data
+    orderNumber = recieved//1000
+    orderProperty = recieved - (orderNumber*1000)
+    orderObject.ChangeOrderAndProperties(orderNumber,orderProperty)
+    rospy.loginfo("Dostalem-callback")
+    rospy.loginfo(recieved)
     # orderObject.ChangeOrder(data.Order)
     # orderObject.ChangeOrderProperties(data.OrderProperty)
 
@@ -127,10 +139,9 @@ def talker():
     pub = rospy.Publisher('RaspberryControlWriter',String,queue_size=10)
     rospy.init_node('talker',anonymous=True)
     rate = rospy.Rate(20) #10Hz
-    rospy.Subscriber("RaspberryRead",Int16,)
-    pub.publish("JEDZIEMY!")
+    #pub.publish("JEDZIEMY!")
     rospy.loginfo("Jedziemy!")
-    rospy.Subscriber("RaspberryControlReader", Control, receiveOrders)
+    rospy.Subscriber("RaspberryControlReader", Int16, receiveOrders)
     ser.write(bytearray([constants.CONST_SERIAL_RPI_INITIALIZED]))
     time.sleep(1)
     bufferSerial = b""
@@ -138,6 +149,7 @@ def talker():
         try:
             if orderObject.CheckChange() == True:
                 if orderObject.GenerateSerialMessage() == True:
+                    rospy.loginfo("Wrzucam na serial")
                     ser.write(orderObject.ReadSerialMessage())
 
             wait = ser.in_waiting
@@ -147,7 +159,7 @@ def talker():
             while (len(bufferSerial) > 0):
                 temp=bufferSerial[0]
                 bufferSerial = bufferSerial[1:]
-                rospy.loginfo(temp)
+                rospy.loginfo(ord(temp))
                 if not temp:
                     function = 0
                 else:            
@@ -163,7 +175,6 @@ def talker():
                     rospy.loginfo("OBST")
                     robotState.ChangeState(constants.CONST_STATE_OBSTACLE)
                     if(robotState.GetLimitSwitches() > 0):
-                        pass
                         os.system('mpg321 /home/pi/Torture.mp3 &')
                 elif function == constants.CONST_STATE_STAIRS:
                     pub.publish("STATE STAIRS")
@@ -175,27 +186,35 @@ def talker():
                     rospy.loginfo("STOP")
                     robotState.ChangeState(constants.CONST_STATE_STOP)
                 elif function == constants.CONST_FLOOR:
-                    while ser.in_waiting == 0:
-                        pass
-                    floorSensors = ord(ser.read(1))
+                    while len(bufferSerial) == 0:
+                        bufferTemp = ser.read(ser.in_waiting)
+                        bufferSerial = bufferSerial + bufferTemp
+                    floorSensors = ord(bufferSerial[0])
+                    bufferSerial = bufferSerial[1:]
                     robotState.ChangeFloorSensors(floorSensors)
                     rospy.loginfo(floorSensors)
                 elif function == constants.CONST_OBSTACLE_SONAR_BACK:
-                    while ser.in_waiting == 0:
-                        pass
-                    backSonar = ord(ser.read(1))
+                    while len(bufferSerial) == 0:
+                        bufferTemp = ser.read(ser.in_waiting)
+                        bufferSerial = bufferSerial + bufferTemp
+                    backSonar = ord(bufferSerial[0])
+                    bufferSerial = bufferSerial[1:]
                     robotState.ChangeRearDistance(backSonar)
                     rospy.loginfo(backSonar)
                 elif function == constants.CONST_OBSTACLE_SONAR_FRONT:
-                    while ser.in_waiting == 0:
-                        pass
-                    frontSonar = ord(ser.read(1))
+                    while len(bufferSerial) == 0:
+                        bufferTemp = ser.read(ser.in_waiting)
+                        bufferSerial = bufferSerial + bufferTemp
+                    frontSonar = ord(bufferSerial[0])
+                    bufferSerial = bufferSerial[1:]
                     robotState.ChangeFrontDistance(frontSonar)
                     rospy.loginfo(frontSonar)
                 elif function == constants.CONST_OBSTACLE_SWITCHES:
-                    while ser.in_waiting == 0:
-                        pass
-                    limitSwitches = ord(ser.read(1))
+                    while len(bufferSerial) == 0:
+                        bufferTemp = ser.read(ser.in_waiting)
+                        bufferSerial = bufferSerial + bufferTemp
+                    limitSwitches = ord(bufferSerial[0])
+                    bufferSerial = bufferSerial[1:]
                     robotState.ChangeLimitSwitches(limitSwitches)
                     rospy.loginfo(limitSwitches)
                 rate.sleep()
