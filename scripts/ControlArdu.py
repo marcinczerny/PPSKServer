@@ -42,59 +42,53 @@ class order:
         if self.order[0] in requestList:
             return True
 
-    def GenerateResponse(self,robotState):
-        self.limitSwitches = 15
-        self.frontDistance = 0
-        self.rearDistance = 0
-        self.state = constants.CONST_STATE_MOVEMENT
-        self.position = 0
-        self.floorSensors = 0
-        self.speed = 0
-        robotState = state()
-        temp = self.order.pop()
-        tempProperties = self.OrderProperties()
+
+    def GenerateResponse(self,robotState,order = None):
+
+        if order is None:
+            temp = self.order.pop()
+            self.OrderProperties.pop()
+        else:
+            temp = order
         if temp == constants.CONST_READ_STATE:
-            self.Response = "S" + str(robotState.state) + "O" + str(robotState.position)
+            self.Response = constants.CONST_RESPONSE_STATE + str(robotState.state) + constants.CONST_RESPONSE_POSITION + str(robotState.position)
             return True
         if temp == constants.CONST_READ_LIMIT_SWITCHES:
-            self.Response
+            self.Response = constants.CONST_RESPONSE_LIMIT_SWITCHES + str(robotState.limitSwitches)
             return True
         if temp == constants.CONST_READ_DISTANCE_FRONT:
-            pass
+            self.Response = constants.CONST_RESPONSE_DISTANCE_FRONT + str(robotState.frontDistance)
             return True
         if temp == constants.CONST_READ_DISTANCE_REAR:
-            pass
+            self.Response = constants.CONST_RESPONSE_DISTANCE_READ + str(robotState.rearDistance)
             return True
         if temp == constants.CONST_READ_FLOOR:
-            pass
+            self.Response = constants.CONST_RESPONSE_FLOOR + str(robotState.floorSensors)
             return True
         else:
             return False
 
     def GenerateSerialMessage(self):
-        temp = self.order.pop() 
+        temp = self.order.pop()
+        tempProperties = self.OrderProperties.pop() 
         if temp == constants.CONST_START:
             rospy.loginfo("Generuje start")
-            self.SerialMessage.append(bytearray([constants.CONST_SERIAL_RPI_START])) 
-            self.OrderProperties.pop()
+            self.SerialMessage = (bytearray([constants.CONST_SERIAL_RPI_START])) 
             return True
         elif temp == constants.CONST_DIRECTION:
-            self.SerialMessage.append(bytearray([constants.CONST_SERIAL_RPI_DIRECTION, self.OrderProperties.pop()]))
+            self.SerialMessage = (bytearray([constants.CONST_SERIAL_RPI_DIRECTION, tempProperties]))
             return True
         elif temp == constants.CONST_SPEED:
-            self.SerialMessage.append(bytearray([constants.CONST_SERIAL_RPI_SPEED, self.OrderProperties.pop()]))
+            self.SerialMessage = (bytearray([constants.CONST_SERIAL_RPI_SPEED, tempProperties]))
             return True
         elif temp == constants.CONST_INITIALIZE:
-            self.SerialMessage.append(bytearray([constants.CONST_SERIAL_RPI_INITIALIZED]))
-            self.OrderProperties.pop()
+            self.SerialMessage = (bytearray([constants.CONST_SERIAL_RPI_INITIALIZED]))
             return True
         elif temp == constants.CONST_STOP:
             rospy.loginfo("Generuje stop")
-            self.SerialMessage.append(bytearray([constants.CONST_SERIAL_RPI_STOP]))
-            self.OrderProperties.pop()
+            self.SerialMessage = (bytearray([constants.CONST_SERIAL_RPI_STOP]))
             return True
         else:
-            self.OrderProperties.pop()
             return False     
 class state:
     def __init__(self):
@@ -224,6 +218,8 @@ def talker():
                     pub.publish("STATE MOVEMENT")
                     rospy.loginfo("MOV")
                     robotState.ChangeState(constants.CONST_STATE_MOVEMENT)
+                    if orderObject.GenerateResponse(robotState,constants.CONST_READ_STATE) == True:
+                        pub.publish(orderObject.SerialMessage)
                     os.system('mpg321 /home/pi/Jaguar.mp3 &')
                 elif function == constants.CONST_STATE_OBSTACLE:
                     pub.publish("STATE OBSTACLE")
