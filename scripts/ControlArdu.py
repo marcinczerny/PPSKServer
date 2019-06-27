@@ -14,57 +14,87 @@ class order:
         self.OrderProperties=[]
         self.SerialMessage = b""
         self.Change = 0
+        self.Response = ""
     
     def ChangeOrder(self,newOrder):
         self.order.append(newOrder)
-        self.Change += 1 
 
     def ChangeOrderProperties(self,newProperties):
         self.OrderProperties = newProperties
-        self.Change += 1
+
     
     def ChangeOrderAndProperties(self,newOrder,newProperties):
         self.OrderProperties.append(newProperties)
-        self.order.append(newProperties) = newOrder
-        self.Change += 1
+        self.order.append(newOrder)
 
     def ReadOrder(self):
-        self.Change -= 1
         return (self.order[0],self.OrderProperties[0])
 
     def CheckChange(self):
-        return self.Change 
+        #return self.Change 
+        return len(self.order)
 
     def ReadSerialMessage(self):
         return self.SerialMessage
 
     def DecideIfItIsARequest(self):
-        if self.order[0] == (constants.CONST_READ_STATE or constants.CONST_READ_DISTANCE_FRONT or constants.CONST_READ_DISTANCE_REAR or constants.CONST_DIRECTION or constants.CONST_READ_FLOOR or constants.CONST_READ_LIMIT_SWITCHES):
+        requestList = [constants.CONST_READ_STATE,constants.CONST_READ_DISTANCE_FRONT,constants.CONST_READ_DISTANCE_REAR,constants.CONST_DIRECTION,constants.CONST_READ_FLOOR,constants.CONST_READ_LIMIT_SWITCHES]
+        if self.order[0] in requestList:
+            return True
+
+    def GenerateResponse(self,robotState):
+        self.limitSwitches = 15
+        self.frontDistance = 0
+        self.rearDistance = 0
+        self.state = constants.CONST_STATE_MOVEMENT
+        self.position = 0
+        self.floorSensors = 0
+        self.speed = 0
+        robotState = state()
+        temp = self.order.pop()
+        tempProperties = self.OrderProperties()
+        if temp == constants.CONST_READ_STATE:
+            self.Response = "S" + str(robotState.state) + "O" + str(robotState.position)
+            return True
+        if temp == constants.CONST_READ_LIMIT_SWITCHES:
+            self.Response
+            return True
+        if temp == constants.CONST_READ_DISTANCE_FRONT:
             pass
+            return True
+        if temp == constants.CONST_READ_DISTANCE_REAR:
+            pass
+            return True
+        if temp == constants.CONST_READ_FLOOR:
+            pass
+            return True
+        else:
+            return False
 
     def GenerateSerialMessage(self):
-        self.Change -= 1 
-        if self.order.pop() == constants.CONST_START:
+        temp = self.order.pop() 
+        if temp == constants.CONST_START:
             rospy.loginfo("Generuje start")
-            self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_START]) 
+            self.SerialMessage.append(bytearray([constants.CONST_SERIAL_RPI_START])) 
             self.OrderProperties.pop()
             return True
-        elif self.order.pop() == constants.CONST_DIRECTION:
-            self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_DIRECTION, self.OrderProperties.pop()])
+        elif temp == constants.CONST_DIRECTION:
+            self.SerialMessage.append(bytearray([constants.CONST_SERIAL_RPI_DIRECTION, self.OrderProperties.pop()]))
             return True
-        elif self.order.pop() == constants.CONST_SPEED:
-            self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_SPEED, self.OrderProperties.pop()])
+        elif temp == constants.CONST_SPEED:
+            self.SerialMessage.append(bytearray([constants.CONST_SERIAL_RPI_SPEED, self.OrderProperties.pop()]))
             return True
-        elif self.order.pop() == constants.CONST_INITIALIZE:
-            self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_INITIALIZED])
+        elif temp == constants.CONST_INITIALIZE:
+            self.SerialMessage.append(bytearray([constants.CONST_SERIAL_RPI_INITIALIZED]))
             self.OrderProperties.pop()
             return True
-        elif self.order.pop() == constants.CONST_STOP:
+        elif temp == constants.CONST_STOP:
             rospy.loginfo("Generuje stop")
-            self.SerialMessage = bytearray([constants.CONST_SERIAL_RPI_STOP])
+            self.SerialMessage.append(bytearray([constants.CONST_SERIAL_RPI_STOP]))
             self.OrderProperties.pop()
             return True
         else:
+            self.OrderProperties.pop()
             return False     
 class state:
     def __init__(self):
@@ -74,6 +104,7 @@ class state:
         self.state = constants.CONST_STATE_MOVEMENT
         self.position = 0
         self.floorSensors = 0
+        self.speed = 0
     
     def ChangeState(self,newState):
         self.state = newState
@@ -90,9 +121,29 @@ class state:
     def ChangeFloorSensors(self,newSensors):
         self.floorSensors = newSensors
     
+    def ChangeSpeed(self, newSpeed):
+        self.speed = newSpeed
+    
     def GetLimitSwitches(self):
         return self.limitSwitches
+
+    def GetState(self):
+        return self.state
     
+    def GetPosition(self):
+        return self.position
+    
+    def GetFrontDistance(self):
+        return self.frontDistance
+
+    def GetRearDistance(self):
+        return self.rearDistance
+    
+    def GetSpeed(self):
+        return self.speed
+    
+    def GetFloor(self):
+        return self.floorSensors
 ser = None
 orderObject = None
 def receiveOrders(data):
@@ -139,7 +190,8 @@ def talker():
     pub = rospy.Publisher('RaspberryControlWriter',String,queue_size=10)
     rospy.init_node('talker',anonymous=True)
     rate = rospy.Rate(20) #10Hz
-    #pub.publish("JEDZIEMY!")
+    time.sleep(20)
+    pub.publish("JEDZIEMY!")
     rospy.loginfo("Jedziemy!")
     rospy.Subscriber("RaspberryControlReader", Int16, receiveOrders)
     ser.write(bytearray([constants.CONST_SERIAL_RPI_INITIALIZED]))
@@ -147,8 +199,11 @@ def talker():
     bufferSerial = b""
     while not rospy.is_shutdown():
         try:
-            if orderObject.CheckChange() == True:
-                if orderObject.GenerateSerialMessage() == True:
+            while orderObject.CheckChange() > 0:
+                if orderObject.DecideIfItIsARequest() == True:
+                    if orderObject.GenerateResponse(robotState) == True:
+                        pub.publish(orderObject.Response)
+                elif orderObject.GenerateSerialMessage() == True:
                     rospy.loginfo("Wrzucam na serial")
                     ser.write(orderObject.ReadSerialMessage())
 
