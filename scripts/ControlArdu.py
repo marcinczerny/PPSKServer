@@ -6,10 +6,7 @@ import datetime as dt
 #import pygame
 import os
 import time
-#import PyQt5.QtCore
-from PyQt5.QtWidgets import QApplication, QLabel
-from PyQt5 import QtWidgets, QtGui, QtCore
-from PyQt5.QtCore import pyqtSignal
+
 
 
     
@@ -18,19 +15,6 @@ from std_msgs.msg import String, Int16, Float32, Int16MultiArray
 #from ppsk.msg import Control
 
 
-class QThread1(QtCore.QThread):
-    
-    def __init__(self, parent=None):
-        self.sig1 = pyqtSignal(str)
-        QtCore.QThread.__init__(self, parent)
-    def on_source(self, lineftxt):
-        self.source_txt = lineftxt
-    def run(self):
-        self.running = True
-        while self.running:
-            talker(self.sig1)
-            #self.sig1.emit(self.source_txt)
-            #time.sleep(1)
 
 class order:
     def __init__(self):
@@ -220,7 +204,7 @@ def checkTimerElapsed(lastDateTime):
     else:
         return False
 
-def talker(signal1):
+def talker():
     global ser
     global orderObject
 
@@ -282,7 +266,7 @@ def talker(signal1):
                 #rospy.loginfo(function)
                 if function == constants.CONST_STATE_MOVEMENT:
                     rospy.loginfo("MOV")
-                    signal.emit("Movement")
+                   
                     robotState.ChangeState(constants.CONST_STATE_MOVEMENT)
                     if orderObject.GenerateResponse(robotState,constants.CONST_READ_STATE) == True:
                         pub.publish(orderObject.Response)
@@ -290,7 +274,7 @@ def talker(signal1):
                 elif function == constants.CONST_STATE_OBSTACLE:
                     # pub.publish("STATE OBSTACLE")
                     rospy.loginfo("OBST")
-                    signal.emit("Obstacle")
+                    
                     robotState.ChangeState(constants.CONST_STATE_OBSTACLE)
                     if orderObject.GenerateResponse(robotState,constants.CONST_READ_STATE) == True:
                         pub.publish(orderObject.Response)
@@ -301,7 +285,7 @@ def talker(signal1):
                 elif function == constants.CONST_STATE_STAIRS:
                     # pub.publish("STATE STAIRS")
                     rospy.loginfo("STAIRS")
-                    signal.emit("Stairs")
+                    
                     robotState.ChangeState(constants.CONST_STATE_STAIRS)
                     if orderObject.GenerateResponse(robotState,constants.CONST_READ_STATE) == True:
                         pub.publish(orderObject.Response)
@@ -309,7 +293,7 @@ def talker(signal1):
                 elif function == constants.CONST_STATE_STOP:
                     # pub.publish("STATE STOP")
                     rospy.loginfo("STOP")
-                    signal.emit("STOP")
+                    
                     robotState.ChangeState(constants.CONST_STATE_STOP)
                     if orderObject.GenerateResponse(robotState,constants.CONST_READ_STATE) == True:
                         pub.publish(orderObject.Response)
@@ -359,24 +343,6 @@ def talker(signal1):
             break
     ser.close() 
 
-def on_info(self, info):
-    label.text = str(info)
 
 if __name__ == '__main__':
-    #global label
-    app = QApplication([])
-    label = QLabel('Hello World')
-    label.show()
-    #self.textf.clear()
-    #lineftxt = self.linef.text()
-    thread1 = QThread1()
-    #self.sig.connect(self.thread1.on_source)
-    #self.sig.emit(lineftxt)
-    thread1.start()
-    thread1.sig1.connect(on_info)
-
-    #self.but1.setEnabled(False)
-
-    
-    app.exec_()
-    #talker()
+    talker()
