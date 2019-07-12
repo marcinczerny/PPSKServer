@@ -1,13 +1,21 @@
+#!/usr/bin/env python
+import constants
+import datetime as dt
+import time
+import os
+import multiprocessing
+import ControlArdu
 from PyQt5 import QtWidgets, QtGui, QtCore
 from PyQt5.QtCore import pyqtSignal
-import time
+
 
 font_but = QtGui.QFont()
 font_but.setFamily("Segoe UI Symbol")
 font_but.setPointSize(10)
 font_but.setWeight(95)
+
 class PushBut1(QtWidgets.QPushButton):
-    
+
     def __init__(self, parent=None):
         super(PushBut1, self).__init__(parent)
         self.setMouseTracking(True)
@@ -45,7 +53,8 @@ class PushBut1(QtWidgets.QPushButton):
 
 class QthreadApp(QtWidgets.QWidget):
     sig = pyqtSignal(str)    
-    def __init__(self, parent=None):
+    def __init__(self, connectPipe,resolution, parent=None):
+        self.connectPipe = connectPipe
         QtWidgets.QWidget.__init__(self, parent)
         self.setWindowTitle("QThread Application")
         self.setWindowIcon(QtGui.QIcon("Path/to/image/file.png"))
@@ -98,7 +107,7 @@ class QthreadApp(QtWidgets.QWidget):
     def on_but1(self):
      self.textf.clear()
      lineftxt = self.linef.text()
-     self.thread1 = QThread1()
+     self.thread1 = QThread1(self.connectPipe)
      self.sig.connect(self.thread1.on_source)
      self.sig.emit(lineftxt)
      self.thread1.start()
@@ -116,26 +125,49 @@ class QthreadApp(QtWidgets.QWidget):
 
 class QThread1(QtCore.QThread):
     sig1 = pyqtSignal(str)
-    def __init__(self, parent=None):
+
+    def __init__(self,connectPipe, parent=None):
         QtCore.QThread.__init__(self, parent)
+        self.connect = connectPipe
     def on_source(self, lineftxt):
         self.source_txt = lineftxt
     def run(self):
         self.running = True
         while self.running:
-            self.sig1.emit(self.source_txt)
+            # talker()
+            while self.connect.poll() == True:
+                self.sig1.emit(self.connect.recv())
             time.sleep(1)
 
-if __name__ == "__main__":
+def qtGUIProcess(conn):
     import sys
     app = QtWidgets.QApplication(sys.argv)
     desktop = QtWidgets.QApplication.desktop()
     resolution = desktop.availableGeometry()
-    myapp = QthreadApp()
+    myapp = QthreadApp(conn,resolution)
     myapp.setWindowOpacity(0.95)
     myapp.show()
     myapp.move(resolution.center() - myapp.rect().center())
     sys.exit(app.exec_())
+
+if __name__ == "__main__":
+    
+    #create pipe
+    parent_conn, child_conn = multiprocessing.Pipe()
+    
+    p1 = multiprocessing.Process(target=qtGUIProcess, args=(parent_conn,)) 
+    p2 = multiprocessing.Process(target=ControlArdu.talker, args=(child_conn,)) 
+  
+    # running processes 
+    p1.start() 
+    p2.start() 
+
+    # wait until processes finish 
+    p1.join() 
+    p2.join() 
+    
 else:
     desktop = QtWidgets.QApplication.desktop()
     resolution = desktop.availableGeometry()
+
+
